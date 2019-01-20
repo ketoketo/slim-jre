@@ -2,16 +2,74 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
 func main() {
+	// app := cli.NewApp()
+	// app.Name = "Goshirase"
+	// app.Usage = "test usage"
+	// app.Version = "0.0.1"
 
-	fmt.Println(createDepModulesWithComma("/home/tmatsuzaki/Downloads/BOOT-INF/lib", []string{"logback-classic", "lombok"}))
+	// // flags
+	// configName := ".goshirase/config"
+	// app.Flags = []cli.Flag{
+	// 	cli.StringFlag{
+	// 		Name:        "profile, p",
+	// 		Value:       ".goshirase/config",
+	// 		Usage:       "config file name",
+	// 		Destination: &configName,
+	// 	},
+	// }
 
+	// app.Commands = []cli.Command{
+	// 	{
+	// 		Name:    "configure",
+	// 		Aliases: []string{"c"},
+	// 		Usage:   "set config file",
+	// 		Action: func(c *cli.Context) error {
+	// 			err := registerConfig(configName)
+	// 			return err
+	// 		},
+	// 	},
+	// }
+	// sort.Sort(cli.FlagsByName(app.Flags))
+	// sort.Sort(cli.CommandsByName(app.Commands))
+
+	// err := app.Run(os.Args)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	if err := os.Mkdir("slim-jre-tmp", 0777); err != nil {
+		fmt.Println(err)
+	}
+
+	copy("loader.jar", filepath.Join("slim-jre-tmp", "loader.jar"))
+
+	// fmt.Println(createDepModulesWithComma("/home/tmatsuzaki/Downloads/BOOT-INF/lib", []string{"logback-classic", "lombok"}))
+
+}
+
+func copy(src, dst string) error {
+	source, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	destination, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+	_, err = io.Copy(destination, source)
+	return err
 }
 
 func createDepModulesWithComma(searchPath string, excludeJarNames []string) string {
@@ -30,11 +88,10 @@ func createDepModulesWithComma(searchPath string, excludeJarNames []string) stri
 			continue
 		}
 
-		filepath := filepath.Join(searchPath, fi.Name())
-		pos := strings.LastIndex(filepath, ".")
-		if filepath[pos:] == ".jar" {
-			fmt.Println(string(filepath))
-			out, err := executeJdeps(filepath)
+		fullpath := filepath.Join(searchPath, fi.Name())
+		if filepath.Ext(fullpath) == ".jar" {
+			fmt.Println(string(fullpath))
+			out, err := executeJdeps(fullpath)
 			if err != nil {
 				panic(err)
 			}
