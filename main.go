@@ -3,35 +3,30 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
 func main() {
-	// out, err := exec.Command("jdeps", "--list-deps", "C:\\Users\\tmatsuzaki\\Downloads\\loader.jar").CombinedOutput()
-	// out, err := exec.Command("jar", "-xvf", "C:\\Users\\tmatsuzaki\\Downloads\\loader.jar").CombinedOutput()
 
-	listFiles("/home/tmatsuzaki/Downloads/BOOT-INF/lib")
+	fmt.Println(createDepModulesWithComma("/home/tmatsuzaki/Downloads/BOOT-INF/lib", []string{"logback-classic", "lombok"}))
 
 }
 
-func listFiles(searchPath string) {
+func createDepModulesWithComma(searchPath string, excludeJarNames []string) string {
 	fis, err := ioutil.ReadDir(searchPath)
 
 	if err != nil {
 		panic(err)
 	}
 
-	removes := []string{"logback-classic", "lombok"}
-
-	modules := make(map[string]struct{})
+	modulesSet := make(map[string]struct{})
 	for _, fi := range fis {
 		if fi.IsDir() {
 			continue
 		}
-		if isRemoveJar(fi.Name(), removes) {
+		if isExcludeJar(fi.Name(), excludeJarNames) {
 			continue
 		}
 
@@ -39,39 +34,46 @@ func listFiles(searchPath string) {
 		pos := strings.LastIndex(filepath, ".")
 		if filepath[pos:] == ".jar" {
 			fmt.Println(string(filepath))
-			out, err := exec.Command("jdeps", "--print-module-deps", "-q", filepath).CombinedOutput()
+			out, err := executeJdeps(filepath)
 			if err != nil {
-				out, err = exec.Command("jdeps", "--print-module-deps", "-q", "--multi-release", "11", filepath).CombinedOutput()
-				if err != nil {
-					fmt.Println(err)
-					os.Exit(1)
-				}
+				panic(err)
 			}
-			outValue := strings.Split(string(out), ",")
-			if len(outValue) == 1 {
+			jdepsResult := strings.Split(string(out), ",")
+			if len(jdepsResult) == 1 {
 				continue
 			}
-			for _, module := range outValue {
-				newLineRepModule := strings.Replace(module, "\r\n", "\n", -1)
-				newLineRepModule = strings.Replace(newLineRepModule, "\n", "", -1)
-				modules[newLineRepModule] = struct{}{}
-			}
+			createMoludesSet(jdepsResult, modulesSet)
 		}
 
 	}
-	keys := make([]string, 0, len(modules))
-	for k := range modules {
+	keys := make([]string, 0, len(modulesSet))
+	for k := range modulesSet {
 		keys = append(keys, k)
 	}
-	fmt.Println(strings.Join(keys, ","))
-
+	return strings.Join(keys, ",")
 }
 
-func isRemoveJar(e string, s []string) bool {
+func isExcludeJar(e string, s []string) bool {
 	for _, v := range s {
 		if strings.Contains(e, v) {
 			return true
 		}
 	}
 	return false
+}
+
+func executeJdeps(filepath string) ([]byte, error) {
+	out, err := exec.Command("jdeps", "--print-module-deps", "-q", filepath).CombinedOutput()
+	if err != nil {
+		out, err = exec.Command("jdeps", "--print-module-deps", "-q", "--multi-release", "11", filepath).CombinedOutput()
+	}
+	return out, err
+}
+
+func createMoludesSet(jdepsResult []string, modulesSet map[string]struct{}) {
+	for _, module := range jdepsResult {
+		newLineRepModule := strings.Replace(module, "\r\n", "\n", -1)
+		newLineRepModule = strings.Replace(newLineRepModule, "\n", "", -1)
+		modulesSet[newLineRepModule] = struct{}{}
+	}
 }
