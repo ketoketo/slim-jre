@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const WORKDIR = "slim-jre-tmp"
+
 func main() {
 	// app := cli.NewApp()
 	// app.Name = "Goshirase"
@@ -46,14 +48,34 @@ func main() {
 	// 	log.Fatal(err)
 	// }
 
-	if err := os.Mkdir("slim-jre-tmp", 0777); err != nil {
-		fmt.Println(err)
+	// 対象のjarの依存関係を調べる
+	targetJar := "loader.jar"
+	modulesSet := make(map[string]struct{})
+	jdepsResult := executeJdeps(targetJar)
+	createMoludesSet(jdepsResult, modulesSet)
+
+	// jar内に依存ライブラリがある場合ワークディレクトリに解答し、そこで依存関係を調べる
+	mkWorkDir()
+	executeUnzipJar(WORKDIR, targetJar)
+	addInnerDepModules("C:\\Users\\tmatsuzaki\\Documents\\go\\src\\slim-jre\\slim-jre-tmp\\BOOT-INF\\lib", []string{"logback-classic", "lombok"}, modulesSet)
+	fmt.Println(createModulesStringWithComma(modulesSet))
+	delete(WORKDIR)
+}
+
+func mkWorkDir() {
+	if _, err := os.Stat(WORKDIR); !os.IsNotExist(err) {
+		delete(WORKDIR)
 	}
 
-	copy("loader.jar", filepath.Join("slim-jre-tmp", "loader.jar"))
+	if err := os.Mkdir(WORKDIR, 0777); err != nil {
+		panic(err)
+	}
+}
 
-	// fmt.Println(createDepModulesWithComma("/home/tmatsuzaki/Downloads/BOOT-INF/lib", []string{"logback-classic", "lombok"}))
-
+func delete(name string) {
+	if err := os.RemoveAll(name); err != nil {
+		panic(err)
+	}
 }
 
 func copy(src, dst string) error {
@@ -72,14 +94,13 @@ func copy(src, dst string) error {
 	return err
 }
 
-func createDepModulesWithComma(searchPath string, excludeJarNames []string) string {
+func addInnerDepModules(searchPath string, excludeJarNames []string, modulesSet map[string]struct{}) {
 	fis, err := ioutil.ReadDir(searchPath)
 
 	if err != nil {
 		panic(err)
 	}
 
-	modulesSet := make(map[string]struct{})
 	for _, fi := range fis {
 		if fi.IsDir() {
 			continue
@@ -91,23 +112,14 @@ func createDepModulesWithComma(searchPath string, excludeJarNames []string) stri
 		fullpath := filepath.Join(searchPath, fi.Name())
 		if filepath.Ext(fullpath) == ".jar" {
 			fmt.Println(string(fullpath))
-			out, err := executeJdeps(fullpath)
-			if err != nil {
-				panic(err)
-			}
-			jdepsResult := strings.Split(string(out), ",")
+			jdepsResult := executeJdeps(fullpath)
 			if len(jdepsResult) == 1 {
+				// 依存ライブラリが何もない場合
 				continue
 			}
 			createMoludesSet(jdepsResult, modulesSet)
 		}
-
 	}
-	keys := make([]string, 0, len(modulesSet))
-	for k := range modulesSet {
-		keys = append(keys, k)
-	}
-	return strings.Join(keys, ",")
 }
 
 func isExcludeJar(e string, s []string) bool {
@@ -119,12 +131,27 @@ func isExcludeJar(e string, s []string) bool {
 	return false
 }
 
-func executeJdeps(filepath string) ([]byte, error) {
+func executeUnzipJar(workPath string, jarName string) {
+	pwd, _ := os.Getwd()
+	jarPath := filepath.Join(pwd, jarName)
+	os.Chdir(workPath)
+	err := exec.Command("jar", "-xf", jarPath).Run()
+	if err != nil {
+		panic(err)
+	}
+	os.Chdir(pwd)
+}
+
+func executeJdeps(filepath string) []string {
 	out, err := exec.Command("jdeps", "--print-module-deps", "-q", filepath).CombinedOutput()
 	if err != nil {
 		out, err = exec.Command("jdeps", "--print-module-deps", "-q", "--multi-release", "11", filepath).CombinedOutput()
 	}
-	return out, err
+	if err != nil {
+		panic(err)
+	}
+	jdepsResult := strings.Split(string(out), ",")
+	return jdepsResult
 }
 
 func createMoludesSet(jdepsResult []string, modulesSet map[string]struct{}) {
@@ -133,4 +160,12 @@ func createMoludesSet(jdepsResult []string, modulesSet map[string]struct{}) {
 		newLineRepModule = strings.Replace(newLineRepModule, "\n", "", -1)
 		modulesSet[newLineRepModule] = struct{}{}
 	}
+}
+
+func createModulesStringWithComma(modulesSet map[string]struct{}) string {
+	keys := make([]string, 0, len(modulesSet))
+	for k := range modulesSet {
+		keys = append(keys, k)
+	}
+	return strings.Join(keys, ",")
 }
