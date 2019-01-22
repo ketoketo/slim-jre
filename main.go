@@ -113,11 +113,12 @@ func addInnerDepModules(searchPath string, excludeJarNames []string, modulesSet 
 		if filepath.Ext(fullpath) == ".jar" {
 			fmt.Println(string(fullpath))
 			jdepsResult := executeJdeps(fullpath)
-			if len(jdepsResult) == 1 {
+			if len(jdepsResult) == 1 && (jdepsResult[0] == "\r\n" || jdepsResult[0] == "\n") {
 				// 依存ライブラリが何もない場合
 				continue
 			}
 			createMoludesSet(jdepsResult, modulesSet)
+			fmt.Println(createModulesStringWithComma(modulesSet))
 		}
 	}
 }
